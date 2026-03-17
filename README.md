@@ -2,7 +2,7 @@
 
 A single-page web app that sends an image to three Claude models simultaneously and compares their descriptions side-by-side.
 
-Drop an image, and Haiku 4.5, Sonnet 4.6, and Opus 4.6 each describe it independently. Once all three finish, Opus generates a comparative analysis highlighting what the smaller models missed.
+Drop an image, and Haiku 4.5, Sonnet 4.6, and Opus 4.6 each describe it independently. Once all three finish, Opus generates a comparative analysis highlighting what the smaller models missed (making the assumption that Opus' description is most correct).
 
 ## Features
 
