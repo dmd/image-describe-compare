@@ -21,3 +21,4 @@ Drop an image, and Haiku 4.5, Sonnet 4.6, and Opus 4.6 each describe it independ
 
 The API key is stored in `localStorage` and never leaves your browser except in requests to the Anthropic API.
 
+<img width="1096" height="1077" alt="image" src="https://github.com/user-attachments/assets/37e21e23-6b02-40fc-ba11-b97fec89808a" />
