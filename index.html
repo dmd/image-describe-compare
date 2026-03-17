@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Describe &amp; Compare</title>
+  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f5f5f5; color: #333; }
+    #settings-btn { position: fixed; top: 12px; right: 16px; background: none; border: none; font-size: 24px; cursor: pointer; z-index: 10; }
+    #modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center; }
+    #modal-overlay.visible { display: flex; }
+    #modal { background: white; padding: 24px; border-radius: 8px; min-width: 320px; }
+    #modal h3 { margin-bottom: 12px; }
+    #modal input { width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+    #modal button { padding: 8px 20px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    #drop-zone { border: 2px dashed #aaa; border-radius: 8px; padding: 40px; text-align: center; margin-bottom: 12px; cursor: pointer; background: white; transition: border-color 0.2s; min-height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+    #drop-zone.dragover { border-color: #333; background: #fafafa; }
+    #drop-zone.has-image { cursor: default; padding: 16px; }
+    #drop-text { color: #888; font-size: 16px; }
+    #preview { max-width: 100%; max-height: 400px; border-radius: 4px; }
+    #dimensions { font-size: 12px; color: #888; }
+    #drop-zone .error { color: #c00; font-size: 14px; }
+    #session-cost { text-align: center; font-size: 13px; color: #666; margin-bottom: 16px; }
+    #results { display: flex; gap: 16px; }
+    .pane { flex: 1; background: white; border-radius: 8px; padding: 16px; min-height: 200px; display: flex; flex-direction: column; border: 1px solid #e0e0e0; }
+    .pane h2 { font-size: 15px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #eee; }
+    .result-text { flex: 1; font-size: 14px; line-height: 1.5; overflow-y: auto; max-height: 500px; }
+    .result-text h1, .result-text h2, .result-text h3 { font-size: 14px; font-weight: bold; margin: 8px 0 4px; }
+    .result-text p { margin: 0 0 8px; }
+    .result-text ul, .result-text ol { margin: 0 0 8px; padding-left: 20px; }
+    .result-text li { margin-bottom: 2px; }
+    .result-text .error { color: #c00; }
+    .stats { font-size: 12px; color: #888; padding-top: 8px; margin-top: 8px; border-top: 1px solid #eee; }
+    .spinner { margin: auto; width: 24px; height: 24px; border: 3px solid #eee; border-top-color: #333; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #comparison { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; margin-top: 16px; }
+    #comparison h2 { font-size: 15px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #eee; }
+    #comparison .result-text { font-size: 14px; line-height: 1.5; }
+    #comparison .stats { font-size: 12px; color: #888; padding-top: 8px; margin-top: 8px; border-top: 1px solid #eee; }
+    #comparison .spinner { margin: 12px auto; width: 24px; height: 24px; border: 3px solid #eee; border-top-color: #333; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @media (max-width: 768px) { #results { flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <button id="settings-btn" title="API Key Settings">&#9881;</button>
+  <div id="modal-overlay">
+    <div id="modal">
+      <h3>API Key</h3>
+      <input type="password" id="api-key-input" placeholder="sk-ant-...">
+      <button id="save-key-btn">Save</button>
+    </div>
+  </div>
+  <div id="drop-zone">
+    <p id="drop-text">Drop an image here (JPG, PNG, or HEIC)</p>
+    <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.heic" hidden>
+    <img id="preview" alt="" hidden>
+    <span id="dimensions" hidden></span>
+  </div>
+  <div id="session-cost">Session cost: $0.0000</div>
+  <div id="results">
+    <div class="pane" data-model="claude-haiku-4-5-20251001">
+      <h2>Haiku 4.5</h2>
+      <div class="spinner" hidden></div>
+      <div class="result-text"></div>
+      <div class="stats" hidden></div>
+    </div>
+    <div class="pane" data-model="claude-sonnet-4-6">
+      <h2>Sonnet 4.6</h2>
+      <div class="spinner" hidden></div>
+      <div class="result-text"></div>
+      <div class="stats" hidden></div>
+    </div>
+    <div class="pane" data-model="claude-opus-4-6">
+      <h2>Opus 4.6</h2>
+      <div class="spinner" hidden></div>
+      <div class="result-text"></div>
+      <div class="stats" hidden></div>
+    </div>
+  </div>
+  <div id="comparison" hidden>
+    <h2>Comparison (by Opus 4.6)</h2>
+    <div class="spinner" hidden></div>
+    <div class="result-text"></div>
+    <div class="stats" hidden></div>
+  </div>
+  <script>
+    // --- Pricing ---
+    const PRICING = {
+      'claude-haiku-4-5-20251001':  { input: 1,  output: 5  },
+      'claude-sonnet-4-6': { input: 3,  output: 15 },
+      'claude-opus-4-6':   { input: 5,  output: 25 },
+    };
+
+    let sessionCost = 0;
+    const sessionCostEl = document.getElementById('session-cost');
+
+    function updateSessionCost(amount) {
+      sessionCost += amount;
+      sessionCostEl.textContent = `Session cost: $${sessionCost.toFixed(4)}`;
+    }
+
+    function calcCost(model, inputTokens, outputTokens) {
+      const p = PRICING[model];
+      return (inputTokens * p.input + outputTokens * p.output) / 1_000_000;
+    }
+
+    // --- API Key Modal ---
+    const settingsBtn = document.getElementById('settings-btn');
+    const modalOverlay = document.getElementById('modal-overlay');
+    const apiKeyInput = document.getElementById('api-key-input');
+    const saveKeyBtn = document.getElementById('save-key-btn');
+
+    function showModal() {
+      apiKeyInput.value = localStorage.getItem('anthropic_api_key') || '';
+      modalOverlay.classList.add('visible');
+      apiKeyInput.focus();
+    }
+
+    function hideModal() {
+      modalOverlay.classList.remove('visible');
+    }
+
+    function saveKey() {
+      const key = apiKeyInput.value.trim();
+      if (key) {
+        localStorage.setItem('anthropic_api_key', key);
+        hideModal();
+      }
+    }
+
+    settingsBtn.addEventListener('click', showModal);
+    saveKeyBtn.addEventListener('click', saveKey);
+    apiKeyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveKey(); });
+    modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) hideModal(); });
+
+    if (!localStorage.getItem('anthropic_api_key')) {
+      showModal();
+    }
+
+    // --- Image Drop, Resize, Preview ---
+    const dropZone = document.getElementById('drop-zone');
+    const dropText = document.getElementById('drop-text');
+    const fileInput = document.getElementById('file-input');
+    const preview = document.getElementById('preview');
+    const dimensionsEl = document.getElementById('dimensions');
+
+    const MAX_DIM = 2000;
+    let currentBase64 = null;
+    let currentMediaType = 'image/jpeg';
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); });
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+
+    function showError(el, msg) {
+      const span = document.createElement('span');
+      span.className = 'error';
+      span.textContent = msg;
+      el.replaceChildren(span);
+    }
+
+    function showDropError(msg) {
+      showError(dropText, msg);
+      dropText.hidden = false;
+    }
+
+    async function handleFile(file) {
+      preview.hidden = true;
+      dimensionsEl.hidden = true;
+      dropText.hidden = false;
+      dropText.textContent = 'Processing...';
+      dropZone.classList.remove('has-image');
+
+      const name = file.name.toLowerCase();
+      const isHeic = name.endsWith('.heic') || file.type === 'image/heic';
+      const isJpeg = name.endsWith('.jpg') || name.endsWith('.jpeg') || file.type === 'image/jpeg';
+      const isPng = name.endsWith('.png') || file.type === 'image/png';
+
+      if (!isHeic && !isJpeg && !isPng) {
+        showDropError('Unsupported file type. Use JPG, PNG, or HEIC.');
+        return;
+      }
+
+      let blob = file;
+      if (isHeic) {
+        try {
+          blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
+        } catch (err) {
+          showDropError('Could not convert HEIC file. Try converting to JPEG first.');
+          return;
+        }
+      }
+
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(img.src);
+        let { width, height } = img;
+        if (width > MAX_DIM || height > MAX_DIM) {
+          const scale = MAX_DIM / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        currentBase64 = dataUrl.split(',')[1];
+        currentMediaType = 'image/jpeg';
+
+        preview.src = dataUrl;
+        preview.hidden = false;
+        dimensionsEl.textContent = `${width} \u00d7 ${height} sent to API`;
+        dimensionsEl.hidden = false;
+        dropText.hidden = true;
+        dropZone.classList.add('has-image');
+
+        sendToModels();
+      };
+      img.onerror = () => showDropError('Could not read image file.');
+      img.src = URL.createObjectURL(blob);
+    }
+
+    // --- API Calls ---
+    const comparisonDiv = document.getElementById('comparison');
+    const descriptions = {};
+    let pendingCount = 0;
+
+    function sendToModels() {
+      const apiKey = localStorage.getItem('anthropic_api_key');
+      const panes = document.querySelectorAll('.pane');
+
+      // Reset comparison
+      descriptions['haiku'] = null;
+      descriptions['sonnet'] = null;
+      descriptions['opus'] = null;
+      pendingCount = 3;
+      comparisonDiv.hidden = true;
+      comparisonDiv.querySelector('.result-text').textContent = '';
+      comparisonDiv.querySelector('.stats').hidden = true;
+
+      panes.forEach(pane => {
+        const model = pane.dataset.model;
+        const spinner = pane.querySelector('.spinner');
+        const resultText = pane.querySelector('.result-text');
+        const stats = pane.querySelector('.stats');
+
+        resultText.textContent = '';
+        stats.hidden = true;
+
+        if (!apiKey) {
+          showError(resultText, 'API key required \u2014 click the gear icon to set it.');
+          pendingCount--;
+          return;
+        }
+
+        spinner.hidden = false;
+        const startTime = performance.now();
+
+        fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify({
+            model: model,
+            max_tokens: 4096,
+            messages: [{
+              role: 'user',
+              content: [
+                { type: 'image', source: { type: 'base64', media_type: currentMediaType, data: currentBase64 } },
+                { type: 'text', text: 'Describe this image in detail.' }
+              ]
+            }]
+          })
+        })
+        .then(res => res.json())
+        .then(data => {
+          spinner.hidden = true;
+          const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+
+          if (data.error) {
+            showError(resultText, data.error.message);
+            pendingCount--;
+            checkComparison(apiKey);
+            return;
+          }
+
+          const text = data.content[0].text;
+          const inTok = data.usage.input_tokens;
+          const outTok = data.usage.output_tokens;
+          const cost = calcCost(model, inTok, outTok);
+          updateSessionCost(cost);
+
+          resultText.innerHTML = marked.parse(text);
+          stats.hidden = false;
+          stats.textContent = `In: ${inTok.toLocaleString()} | Out: ${outTok.toLocaleString()} | ${elapsed}s | $${cost.toFixed(4)}`;
+
+          // Track for comparison
+          if (model.includes('haiku')) descriptions['haiku'] = text;
+          else if (model.includes('sonnet')) descriptions['sonnet'] = text;
+          else if (model.includes('opus')) descriptions['opus'] = text;
+          pendingCount--;
+          checkComparison(apiKey);
+        })
+        .catch(err => {
+          spinner.hidden = true;
+          showError(resultText, err.message);
+          pendingCount--;
+          checkComparison(apiKey);
+        });
+      });
+    }
+
+    function checkComparison(apiKey) {
+      if (pendingCount > 0) return;
+      if (!descriptions['haiku'] || !descriptions['sonnet'] || !descriptions['opus']) return;
+      runComparison(apiKey);
+    }
+
+    function runComparison(apiKey) {
+      comparisonDiv.hidden = false;
+      const spinner = comparisonDiv.querySelector('.spinner');
+      const resultText = comparisonDiv.querySelector('.result-text');
+      const stats = comparisonDiv.querySelector('.stats');
+
+      spinner.hidden = false;
+      resultText.textContent = '';
+      stats.hidden = true;
+      const startTime = performance.now();
+
+      const prompt = `These three descriptions of an image were generated by three different AI models. Compare them. Assume the Opus model is the most correct and use it as a baseline; describe what Sonnet left out, and what Haiku did.
+
+<opus>
+${descriptions['opus']}
+</opus>
+
+<sonnet>
+${descriptions['sonnet']}
+</sonnet>
+
+<haiku>
+${descriptions['haiku']}
+</haiku>`;
+
+      fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-opus-4-6',
+          max_tokens: 4096,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        spinner.hidden = true;
+        const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+
+        if (data.error) {
+          showError(resultText, data.error.message);
+          return;
+        }
+
+        const text = data.content[0].text;
+        const inTok = data.usage.input_tokens;
+        const outTok = data.usage.output_tokens;
+        const cost = calcCost('claude-opus-4-6', inTok, outTok);
+        updateSessionCost(cost);
+
+        resultText.innerHTML = marked.parse(text);
+        stats.hidden = false;
+        stats.textContent = `In: ${inTok.toLocaleString()} | Out: ${outTok.toLocaleString()} | ${elapsed}s | $${cost.toFixed(4)}`;
+      })
+      .catch(err => {
+        spinner.hidden = true;
+        showError(resultText, err.message);
+      });
+    }
+  </script>
+</body>
+</html>
